@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 using MiniLibrary.Infrastructure.Data;
 using MiniLibrary.Domain.Entities;
 using MiniLibrary.Application.DTOs;
@@ -20,10 +22,17 @@ public class LoansController : ControllerBase
 
 
 
+[Authorize]
 [HttpPost]
 public IActionResult CreateLoan([FromBody] CreateLoanRequest request)
 {
-    var user = _context.Users.FirstOrDefault(u => u.Id == request.UserId);
+    var userIdClaim = User.FindFirst("UserId")?.Value;
+    if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+    {
+        return Unauthorized("Invalid token");
+    }
+
+    var user = _context.Users.FirstOrDefault(u => u.Id == userId);
     if (user == null)
     {
         return NotFound("User not found.");
@@ -35,15 +44,15 @@ public IActionResult CreateLoan([FromBody] CreateLoanRequest request)
     }
     var loan = new Loan
     {
-        UserId = request.UserId,
+        UserId = userId,
         BookId = request.BookId,
-        LoanDate = request.LoanDate,
-        ReturnDate = request.ReturnDate
+        LoanDate = DateTime.UtcNow,
+        ReturnDate = null
     };
     _context.Loans.Add(loan);
     _context.SaveChanges();
     
-    // Return loan without navigation properties to avoid circular reference
+    
     var response = new
     {
         loan.Id,

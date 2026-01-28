@@ -16,11 +16,17 @@ public class BookConfiguration : IEntityTypeConfiguration<Book>
               .HasMaxLength(200);
 
         builder.Property(b => b.Genre)
-               .IsRequired()
-               .HasMaxLength(100);
+               .IsRequired();
+
+          builder.HasOne(b => b.Author)
+               .WithMany(a => a.Books)
+               .HasForeignKey(b => b.AuthorId)
+               .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasMany(b => b.Loans)
                .WithOne(l => l.Book)
                .HasForeignKey(l => l.BookId);       
+
+       builder.HasQueryFilter(b => b.IsDeleted == false || b.IsDeleted == null);
 }
 }

@@ -1,7 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 using MiniLibrary.Infrastructure.Data;
 using MiniLibrary.Domain.Entities;
 using MiniLibrary.Application.DTOs;
+using MiniLibrary.Application.Services;
+using Domain.Interfaces;
 
 namespace MiniLibrary.API.Controllers;
 [ApiController]
@@ -9,10 +13,13 @@ namespace MiniLibrary.API.Controllers;
 public class UsersController : ControllerBase
 {
     private readonly AppDbContext _context;
-    public UsersController(AppDbContext context)
+    private readonly IAuditService _auditService;
+    public UsersController(AppDbContext context, IAuditService auditService)
     {
         _context = context;
+        _auditService = auditService;
     }
+[Authorize(Roles = "Admin")]
 [HttpGet]
 public IActionResult GetUsers()
     {
@@ -49,6 +56,7 @@ public IActionResult CreateUser([FromBody] CreateUserRequest request)
     return CreatedAtAction(nameof(GetUser), new { id = user.Id }, response);
 }
 
+[Authorize(Roles = "Admin")]
 [HttpDelete("{id}")]
 public IActionResult DeleteUser(int id)
 {
@@ -58,10 +66,13 @@ public IActionResult DeleteUser(int id)
         return NotFound();
     }
 
-    _context.Users.Remove(user);
+    user.IsDeleted = true;
+    user.DeletedAt = DateTime.UtcNow;
+    _context.Users.Update(user);
     _context.SaveChanges();
     return NoContent();
 }
+[Authorize]
 [HttpPut("{id}")]
 public IActionResult UpdateUser(int id, [FromBody] CreateUserRequest request)
 {
@@ -71,25 +82,47 @@ var user = _context.Users.FirstOrDefault(u => u.Id == id);
         return NotFound();
     }
 
+    var oldName = user.Name;
     user.Name = request.Name;
+    _auditService.TrackChanges(user, new Dictionary<string, object> { { "Name", $"{oldName} -> {request.Name}" } });
    _context.Users.Update(user);
     _context.SaveChanges();
     var response = new { user.Id, user.Name };
     return Ok(response);
 }
+[Authorize]
 [HttpGet("{id}/loans")]
 public IActionResult GetUserLoans(int id)
 {
-    var user = _context.Users.FirstOrDefault(u => u.Id == id);
+    var userIdClaim = User.FindFirst("UserId")?.Value;
+    if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+    {
+        return Unauthorized("Invalid token");
+    }
+    var user = _context.Users.FirstOrDefault(u => u.Id == userId);
     if (user == null)
     {
         return NotFound();
     }
     var loans = _context.Loans
-        .Where(l => l.UserId == id)
+        .Where(l => l.UserId == userId)
         .Select(l => new { l.Id, l.BookId, l.UserId, l.LoanDate, l.ReturnDate })
         .ToList();
     return Ok(loans);
+}
+[HttpGet("email/{email}")]
+public IActionResult GetUserByEmail(string email)
+{
+    var user = _context.Users
+        .Where(u => u.Email.ToLower() == email.ToLower())
+        .Select(u => new { u.Id, u.Name, u.Email, u.Role })
+        .FirstOrDefault();
+
+    if (user == null)
+    {
+        return NotFound();
+    }
+    return Ok(user);
 }
 
 }

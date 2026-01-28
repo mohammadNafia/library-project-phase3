@@ -14,10 +14,26 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
                .IsRequired()
                .HasMaxLength(100);
 
+        builder.Property(u => u.Email)
+               .IsRequired()
+               .HasMaxLength(255);
+
+        builder.Property(u => u.Password)
+               .IsRequired()
+               .HasMaxLength(255);
+
+        builder.Property(u => u.Role)
+               .IsRequired()
+               .HasConversion<int>();
+
+        builder.Property(u => u.IsDeleted)
+               .HasDefaultValue(false);
+
         builder.HasMany(u => u.Loans)
                .WithOne(l => l.User)
                .HasForeignKey(l => l.UserId);
-        
+               
+        builder.HasQueryFilter(u => u.IsDeleted == false || u.IsDeleted == null);
     }
 
 }
